@@ -47,6 +47,19 @@ logs/
 uploads/
 data/
 
+# Model files (large - should be generated or downloaded)
+*.pth
+models/*.pth
+
+# Notebook files (large)
+*.ipynb
+notebook_outputs/
+*.ipynb_checkpoints/
+
+# Monitored folders and test data
+production_system/monitored_folders/
+production_system/recovered_images/
+
 # Python cache
 .pytest_cache/
 .coverage
