@@ -133,19 +133,7 @@ See **METHODOLOGY.md** for detailed technical architecture, algorithm explanatio
 - **Backend**: Python, Flask, PyTorch
 - **Frontend**: Streamlit
 - **Models**: Deep Neural Networks (CNN)
-- **Deployment**: Docker, Production System
+- **Deployment**: Production System
 - **Data**: CIFAR-10
 
 ---
-
-## 📝 License
-
-[Specify your license]
-
----
-
-## 👤 Author
-
-[Your Name/Institution]
-
-**Last Updated**: May 2026
