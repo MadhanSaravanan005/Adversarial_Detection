@@ -1,0 +1,19 @@
+✓ Attack functions defined (FGSM, PGD, C&W, DeepFool, AutoAttack)
+✓ Preprocessing defenses defined (JPEG, Gaussian, Median)
+✓ Training functions defined (Standard, FGSM Adversarial, PGD Adversarial)
+FGSM Attack          |       1.83%     |      30.52%     |     +28.69%
+PGD Attack           |       0.18%     |      24.40%     |     +24.22%
+FGSM Detection Metrics:
+  Precision: 0.4000
+  Recall: 0.2141
+  F1: 0.2789
+PGD Detection Metrics:
+  Precision: 0.1085
+  Recall: 0.0391
+  F1: 0.0574
+   • FGSM attack significantly reduces accuracy with minimal perturbation
+   • PGD attack (stronger, iterative) is even more effective
+   • Preprocessing: JPEG, Gaussian smoothing, Median filter
+   • Robustness vs Accuracy: Slight clean accuracy drop for better adversarial robustness
+   ✔ Attacks: FGSM, PGD, C&W, DeepFool, AutoAttack
+   ✔ Defenses: Adversarial training, Preprocessing, Randomized smoothing

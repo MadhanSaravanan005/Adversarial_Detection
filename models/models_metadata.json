@@ -1,0 +1,10 @@
+{
+  "baseline": null,
+  "robust": {
+    "path": "models\\robust_model.pth",
+    "status": "architecture_mismatch_using_fresh_model",
+    "loaded_at": "2026-03-30T23:27:18.367035"
+  },
+  "current": null,
+  "versions": {}
+}

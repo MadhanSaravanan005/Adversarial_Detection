@@ -1,0 +1,63 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+detection.db
+
+# Logs
+*.log
+logs/
+
+# Uploads (if any)
+uploads/
+data/
+
+# Python cache
+.pytest_cache/
+.coverage
+
+# Environment variables
+.env
+.env.local
+
+# Models (too large, exclude)
+# models/*.pth -- but keep this in repo!
+
+# Temporary files
+*.tmp
+*.temp
