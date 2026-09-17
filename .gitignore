@@ -57,8 +57,16 @@ notebook_outputs/
 *.ipynb_checkpoints/
 
 # Monitored folders and test data
+monitored_folders/allowed/*
+!monitored_folders/allowed/.gitkeep
+monitored_folders/review/*
+!monitored_folders/review/.gitkeep
+monitored_folders/blocked/*
+!monitored_folders/blocked/.gitkeep
+monitored_folders/results/
 production_system/monitored_folders/
-production_system/recovered_images/
+production_system/recovered_images/*
+!production_system/recovered_images/.gitkeep
 
 # Python cache
 .pytest_cache/

@@ -30,22 +30,21 @@ except ImportError:
         print("ERROR: Could not import detection_core")
         sys.exit(1)
 
-# Optional configuration - use defaults if not available
-try:
-    from config import MONITORED_FOLDER, FOLDER_MONITOR, LOGGING
-except ImportError:
-    try:
-        from .config import MONITORED_FOLDER, FOLDER_MONITOR, LOGGING
-    except ImportError:
-        # Fallback defaults
-        MONITORED_FOLDER = Path('./monitored_folders/input')
-        FOLDER_MONITOR = {
-            'enabled': True,
-            'supported_formats': ['.jpg', '.jpeg', '.png', '.gif', '.bmp'],
-            'auto_organize': True,
-            'check_interval': 2
-    }
-    LOGGING = {'level': 'INFO'}
+# Configuration defaults
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+MONITORED_ROOT = PROJECT_ROOT / 'monitored_folders'
+MONITORED_FOLDER = MONITORED_ROOT / 'input'
+ALLOWED_FOLDER = MONITORED_ROOT / 'allowed'
+REVIEW_FOLDER = MONITORED_ROOT / 'review'
+BLOCKED_FOLDER = MONITORED_ROOT / 'blocked'
+
+FOLDER_MONITOR = {
+    'enabled': True,
+    'supported_formats': ['.jpg', '.jpeg', '.png', '.gif', '.bmp'],
+    'auto_organize': True,
+    'check_interval': 2
+}
+LOGGING = {'level': 'INFO'}
 
 
 class BasicResultsLogger:
@@ -93,12 +92,17 @@ class ImageEventHandler(FileSystemEventHandler):
         self._process_image(file_path)
 
     def _process_image(self, image_path):
-        """Process image for adversarial detection"""
+        """Process image for adversarial detection and auto-organize"""
         try:
-            # Load image
-            image = Image.open(image_path).convert('RGB')
-            image = image.resize((32, 32), Image.Resampling.LANCZOS)
-            image_array = np.array(image, dtype=np.float32) / 255.0
+            # Load and validate image
+            if not image_path.exists() or image_path.stat().st_size == 0:
+                print(f"  [Skip] Empty or missing file: {image_path.name}")
+                return
+
+            with Image.open(image_path) as img:
+                image = img.convert('RGB')
+                image = image.resize((32, 32), Image.Resampling.LANCZOS)
+                image_array = np.array(image, dtype=np.float32) / 255.0
 
             # Detect
             risk_score, confidence, detector_scores = detect_image_fast(image_array)
@@ -112,6 +116,21 @@ class ImageEventHandler(FileSystemEventHandler):
             print(f"Image: {image_path.name}")
             print(f"Risk Score: {risk_score:.2f}%")
             print(f"Decision: {decision}")
+
+            # Auto-organize into destination folder
+            if FOLDER_MONITOR.get('auto_organize', True):
+                import shutil
+                dest_dir = (
+                    ALLOWED_FOLDER if decision == 'ALLOW'
+                    else (REVIEW_FOLDER if decision == 'REVIEW' else BLOCKED_FOLDER)
+                )
+                dest_dir.mkdir(parents=True, exist_ok=True)
+                dest_file = dest_dir / image_path.name
+                if dest_file.exists():
+                    dest_file = dest_dir / f"{image_path.stem}_{int(time.time())}{image_path.suffix}"
+                shutil.copy2(str(image_path), str(dest_file))
+                print(f"Destination: monitored_folders/{dest_dir.name}/{dest_file.name}")
+
             print(f"{'='*60}\n")
 
         except Exception as e:
@@ -125,17 +144,19 @@ def start_folder_monitor():
         return None
 
     print("\n" + "="*60)
-    print("FOLDER MONITOR STARTED")
+    print("AUTOMATED ADVERSARIAL FOLDER MONITOR STARTED")
     print("="*60)
-    print(f"Watching: {MONITORED_FOLDER}")
-    print(f"Supported formats: {', '.join(FOLDER_MONITOR['supported_formats'])}")
-    print(f"Auto-organize: {FOLDER_MONITOR['auto_organize']}")
-    print(f"Check interval: {FOLDER_MONITOR['check_interval']}s")
-    print(f"\nDrop images into: {MONITORED_FOLDER}")
+    print(f"Watching Drop Folder: {MONITORED_FOLDER}")
+    print(f"Output Folders:       {ALLOWED_FOLDER.name}/, {REVIEW_FOLDER.name}/, {BLOCKED_FOLDER.name}/")
+    print(f"Supported Formats:    {', '.join(FOLDER_MONITOR['supported_formats'])}")
+    print(f"Auto-Organize:        {FOLDER_MONITOR['auto_organize']}")
+    print(f"Check Interval:       {FOLDER_MONITOR['check_interval']}s")
+    print(f"\nDrop incoming images into: {MONITORED_FOLDER}")
     print("="*60 + "\n")
 
-    # Create monitored folder if it doesn't exist
-    MONITORED_FOLDER.mkdir(parents=True, exist_ok=True)
+    # Create monitored folders if they don't exist
+    for folder in [MONITORED_FOLDER, ALLOWED_FOLDER, REVIEW_FOLDER, BLOCKED_FOLDER]:
+        folder.mkdir(parents=True, exist_ok=True)
 
     logger = BasicResultsLogger()
     event_handler = ImageEventHandler(logger)

@@ -78,9 +78,12 @@ class HeuristicDetector:
         # ================================================================
         # Natural images have balanced pixel distributions
         flat = image_array.flatten()
-        skewness = abs(stats.skew(flat))
-        if np.isnan(skewness):
+        if np.std(flat) < 1e-6:
             skewness = 0.0
+        else:
+            skewness = abs(float(stats.skew(flat)))
+            if np.isnan(skewness):
+                skewness = 0.0
 
         # Normal: 0-0.3, Adversarial: 0.3+
         scores['distribution_skew'] = min(max(0, (skewness - 0.2) * 2.0), 1.0)
@@ -216,6 +219,21 @@ class HybridDetector:
         self.device = device or torch.device('cpu')
         self.cnn.eval()  # Evaluation mode
 
+        # Check for pretrained model checkpoint
+        from pathlib import Path
+        model_path = Path(__file__).resolve().parent.parent / "models" / "robust_model.pth"
+        self.has_checkpoint = False
+        if model_path.exists():
+            try:
+                state_dict = torch.load(model_path, map_location=self.device)
+                self.cnn.load_state_dict(state_dict)
+                self.has_checkpoint = True
+                logger.info(f"[HybridDetector] Loaded weights from {model_path}")
+            except Exception as e:
+                logger.warning(f"[HybridDetector] Could not load checkpoint from {model_path}: {e}")
+        else:
+            logger.info("[HybridDetector] No pretrained checkpoint found at models/robust_model.pth (operating with initialized architecture).")
+
         logger.info(f"[HybridDetector] Initialized on {self.device}")
         logger.info(f"[HybridDetector] Heuristic methods: {', '.join(self.heuristic.METHODS)}")
 
@@ -244,30 +262,59 @@ class HybridDetector:
         }
 
         # ================================================================
-        # STAGE 2: CNN verification for uncertain cases
+        # STAGE 2: CNN verification for uncertain cases (if checkpoint available)
         # ================================================================
         if use_cnn and not is_certain:
-            try:
-                cnn_risk = self.cnn.predict_risk(image_array) * 100.0
+            if getattr(self, 'has_checkpoint', False):
+                try:
+                    # Apply 3-layer preprocessing defense (JPEG -> Blur -> Median) before CNN evaluation
+                    try:
+                        from production_system.SANITIZATION_APPROACH import AdversarialImageSanitizer
+                        cleaned_image = AdversarialImageSanitizer.apply_pipeline(
+                            image_array, jpeg_quality=85, blur_sigma=1.0, median_kernel=3
+                        )
+                    except Exception as prep_err:
+                        logger.warning(f"Preprocessing defense failed ({prep_err}), evaluating on raw image")
+                        cleaned_image = image_array
 
-                # Combine scores: heuristic is more certain, CNN provides second opinion
-                final_risk = (0.65 * heuristic_risk + 0.35 * cnn_risk)
+                    raw_cnn = self.cnn.predict_risk(cleaned_image)
+                    cnn_risk = float(raw_cnn * 100.0 if raw_cnn <= 1.0 else raw_cnn)
+                    cnn_risk = min(max(0.0, cnn_risk), 100.0)
 
+                    # Combine scores: heuristic is more certain, CNN provides second opinion
+                    final_risk = min(max(0.0, (0.65 * heuristic_risk + 0.35 * cnn_risk)), 100.0)
+
+                    explanation.update({
+                        'stage': '2_hybrid',
+                        'cnn_available': True,
+                        'cnn_used': True,
+                        'cnn_risk': float(cnn_risk),
+                        'cnn_weight': 0.35,
+                        'heuristic_weight': 0.65,
+                        'final_risk': float(final_risk),
+                    })
+
+                except Exception as e:
+                    logger.warning(f"CNN verification failed: {e}. Using heuristic only.")
+                    final_risk = min(max(0.0, heuristic_risk), 100.0)
+                    explanation['cnn_error'] = str(e)
+            else:
+                # Graceful degradation: No trained checkpoint loaded
+                logger.info("[HybridDetector] Stage 2 CNN skipped: No trained checkpoint loaded. Relying on Stage 1 heuristic ensemble.")
+                final_risk = min(max(0.0, heuristic_risk), 100.0)
                 explanation.update({
-                    'stage': '2_hybrid',
-                    'cnn_risk': float(cnn_risk),
-                    'cnn_weight': 0.35,
-                    'heuristic_weight': 0.65,
+                    'stage': '1_heuristic_ensemble',
+                    'cnn_available': False,
+                    'cnn_used': False,
+                    'cnn_status': 'checkpoint_not_loaded (operating in heuristic-only mode)',
                     'final_risk': float(final_risk),
-                    'cnn_used': True,
                 })
-
-            except Exception as e:
-                logger.warning(f"CNN verification failed: {e}. Using heuristic only.")
-                final_risk = heuristic_risk
-                explanation['cnn_error'] = str(e)
         else:
-            final_risk = heuristic_risk
+            final_risk = min(max(0.0, heuristic_risk), 100.0)
+            explanation.update({
+                'cnn_available': getattr(self, 'has_checkpoint', False),
+                'cnn_used': False,
+            })
 
         # ================================================================
         # STAGE 3: Policy engine - convert risk to decision
@@ -336,8 +383,18 @@ class HybridDetector:
 # HELPER FUNCTIONS (Backward compatible)
 # ============================================================================
 
+def detect_image_fast(image_array):
+    """
+    Fast heuristic detection wrapper (backward compatible)
+    Returns: risk_score, confidence, detector_scores
+    """
+    risk_score, scores, _ = HeuristicDetector.detect(image_array)
+    confidence = max(0.0, min(1.0, 1.0 - (risk_score / 100.0)))
+    return risk_score, confidence, scores
+
+
 def get_decision(risk_score):
-    """Legacy function - converts risk to decision"""
+    """Converts risk to decision"""
     if risk_score < 50:
         return 'ALLOW'
     elif risk_score < 75:

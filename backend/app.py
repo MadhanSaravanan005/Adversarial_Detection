@@ -19,6 +19,13 @@ from backend.background_trainer import BackgroundTrainer, AdversarialImageBuffer
 from backend.hybrid_detector import HybridDetector
 from backend.hybrid_detection_with_recovery import HybridDetectionWithRecovery
 
+from pathlib import Path
+
+# Project root directory
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+UPLOAD_FOLDER = str(PROJECT_ROOT / 'uploads')
+LOGS_FOLDER = str(PROJECT_ROOT / 'logs')
+
 # Configure logging with UTF-8 encoding
 logging.basicConfig(
     level=logging.INFO,
@@ -29,12 +36,12 @@ logger = logging.getLogger(__name__)
 # Flask app setup
 app = Flask(__name__)
 CORS(app)
-app.config['UPLOAD_FOLDER'] = './uploads'
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 200 * 1024 * 1024
 
 # Create required directories
-os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-os.makedirs('./logs', exist_ok=True)
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(LOGS_FOLDER, exist_ok=True)
 
 # Global state - Real metrics tracking
 class SystemState:
@@ -42,8 +49,8 @@ class SystemState:
         self.buffer_size = 0
         self.buffer_max = 5
         self.retrain_count = 0
-        self.baseline_accuracy = 72.5
-        self.current_accuracy = 72.5
+        self.baseline_accuracy = None  # No pre-trained benchmark checkpoint loaded
+        self.current_accuracy = None
         self.total_detections = 0
         self.allow_count = 0
         self.review_count = 0
@@ -121,9 +128,12 @@ def health_check():
 def system_info():
     """System information"""
     return jsonify({
-        'name': 'AI-Generated Media Detection Firewall',
+        'name': 'Automated Adversarial Monitoring and Self-Defense System',
         'version': '1.0.0',
-        'description': '5-method ensemble detection with auto-learning',
+        'description': '5-method heuristic ensemble with defense sanitization pipeline',
+        'checkpoint_loaded': hybrid_detector.has_checkpoint,
+        'cnn_checkpoint_loaded': hybrid_detector.has_checkpoint,
+        'active_pipeline': 'Heuristic Detection + Sanitization' if not hybrid_detector.has_checkpoint else 'Hybrid Heuristic + CNN',
         'detection_methods': [
             'Robustness (confidence + stability)',
             'Frequency (texture analysis)',
@@ -154,6 +164,10 @@ def detect_endpoint():
         image = Image.open(io.BytesIO(image_bytes)).convert('RGB')
         image = image.resize((32, 32), Image.Resampling.LANCZOS)
         image_array = np.array(image, dtype=np.float32) / 255.0
+
+        # Support model_type parameter (baseline vs robust)
+        model_type = request.form.get('model_type', 'robust').lower()
+        use_cnn = (model_type != 'baseline')
 
         # Run detection
         risk_score, confidence, detector_scores = detect_image_fast(image_array)
@@ -186,9 +200,8 @@ def detect_endpoint():
         # Auto-retrain trigger
         if state.buffer_size >= state.buffer_max:
             state.retrain_count += 1
-            state.current_accuracy = min(state.current_accuracy + 2.5, 95.0)
             state.buffer_size = 0
-            logger.info(f"Retrain #{state.retrain_count} triggered. Accuracy: {state.current_accuracy:.1f}%")
+            logger.info(f"Retrain #{state.retrain_count} triggered on {state.buffer_max} buffered adversarial samples.")
 
         # Build response
         response = {
@@ -196,17 +209,22 @@ def detect_endpoint():
             'risk_score': float(risk_score),
             'decision': decision,
             'confidence': float(confidence),
+            'checkpoint_loaded': hybrid_detector.has_checkpoint,
+            'active_pipeline': "Heuristic Detection + Sanitization" if not hybrid_detector.has_checkpoint else "Hybrid Heuristic + CNN",
+            'model_used': model_type,
             'detector_scores': detector_scores,
             'buffer_status': {
                 'current_size': state.buffer_size,
                 'max_size': state.buffer_max,
+                'retrain_threshold': state.buffer_max,
                 'percentage_full': (state.buffer_size / state.buffer_max * 100) if state.buffer_max > 0 else 0,
                 'retrains_completed': state.retrain_count
             },
             'accuracy': {
                 'baseline': state.baseline_accuracy,
                 'current': state.current_accuracy,
-                'improvement': state.current_accuracy - state.baseline_accuracy
+                'improvement': (state.current_accuracy - state.baseline_accuracy) if (state.current_accuracy is not None and state.baseline_accuracy is not None) else 0.0,
+                'benchmark_loaded': False
             },
             'timestamp': datetime.now().isoformat()
         }
@@ -377,11 +395,17 @@ def metrics_endpoint():
     """Get system metrics including background retraining status"""
     trainer_status = background_trainer.get_status()
 
+    improvement = (state.current_accuracy - state.baseline_accuracy) if (state.current_accuracy is not None and state.baseline_accuracy is not None) else 0.0
     return jsonify({
         'accuracy': {
             'baseline': state.baseline_accuracy,
             'current': state.current_accuracy,
-            'improvement': state.current_accuracy - state.baseline_accuracy
+            'improvement': improvement,
+            'benchmark_loaded': False
+        },
+        'checkpoint_status': {
+            'loaded': hybrid_detector.has_checkpoint,
+            'mode': 'Stage 1 Heuristic Ensemble' if not hybrid_detector.has_checkpoint else 'Stage 1 + Stage 2 Hybrid'
         },
         'detections': {
             'total': state.total_detections,
@@ -441,7 +465,8 @@ def stats_endpoint():
         'accuracy': {
             'baseline': state.baseline_accuracy,
             'current': state.current_accuracy,
-            'improvement': state.current_accuracy - state.baseline_accuracy
+            'improvement': (state.current_accuracy - state.baseline_accuracy) if (state.current_accuracy is not None and state.baseline_accuracy is not None) else 0.0,
+            'benchmark_loaded': False
         },
         'auto_learning': {
             'retrains_triggered': state.retrain_count,

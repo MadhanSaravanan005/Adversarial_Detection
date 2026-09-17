@@ -17,7 +17,7 @@ from backend.app import app
 
 if __name__ == '__main__':
     print("=" * 60)
-    print("AI Detection Firewall Backend")
+    print("Automated Adversarial Monitoring & Self-Defense Backend")
     print("=" * 60)
     print("Starting server on http://127.0.0.1:9000")
     print("Press Ctrl+C to stop")

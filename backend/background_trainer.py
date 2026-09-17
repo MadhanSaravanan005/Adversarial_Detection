@@ -89,11 +89,9 @@ class AdversarialDetectionCNN(nn.Module):
         with torch.no_grad():
             logits = self.forward(image_tensor)
             probs = torch.softmax(logits, dim=1)
-            # Class 1 is adversarial, so risk = prob of class 1
-            adversarial_prob = probs[0, 1]  # Probability of being adversarial
-            risk_score = float(adversarial_prob.cpu().numpy() * 100)
-
-        return risk_score
+            # Class 1 is adversarial, return probability in [0, 1]
+            adversarial_prob = probs[0, 1].item()
+            return float(adversarial_prob)
 
 
 class AdversarialImageBuffer:
@@ -167,7 +165,7 @@ class BackgroundTrainer(threading.Thread):
         self.running = True
         self.is_retraining = False
         self.retrain_count = 0
-        self.last_accuracy = 72.5  # Start with baseline
+        self.last_accuracy = None  # None until actual retraining occurs
         self.lock = threading.Lock()
 
         logger.info(f"[BackgroundTrainer] Initialized with {self.device}")
@@ -264,18 +262,16 @@ class BackgroundTrainer(threading.Thread):
                 epoch_acc = (epoch_correct / total_samples * 100) if total_samples > 0 else 0
                 logger.info(f"  Epoch {epoch+1}/{num_epochs}: Loss = {avg_loss:.6f}, Acc = {epoch_acc:.1f}%")
 
-            # Calculate real improvement
-            num_correct = sum(1 for score in risk_scores if score > 50)
-            real_accuracy = (num_correct / len(risk_scores) * 100) if risk_scores.size > 0 else 0
-
-            # Update accuracy gradually (not artificially)
-            accuracy_gain = min(real_accuracy * 0.1, 3.0)  # Real, conservative gain
-            self.last_accuracy = min(self.last_accuracy + accuracy_gain, 95.0)
+            # Record genuine training metrics
+            final_loss = total_loss / num_epochs if num_epochs > 0 else 0.0
             self.retrain_count += 1
+            self.last_loss = float(final_loss)
+            self.last_accuracy = float(epoch_acc)
 
             logger.info(
-                f"[RETRAIN] Complete! Count: {self.retrain_count}, "
-                f"Accuracy: {self.last_accuracy:.1f}%, Real Detected: {num_correct}/{len(risk_scores)}\n"
+                f"[RETRAIN] Complete! Retrain #{self.retrain_count}, "
+                f"Trained on: {len(risk_scores)} adversarial samples, "
+                f"Final Avg Loss: {final_loss:.6f}, Batch Acc: {epoch_acc:.1f}%\n"
             )
 
         except Exception as e:
@@ -297,5 +293,6 @@ class BackgroundTrainer(threading.Thread):
             return {
                 'is_retraining': self.is_retraining,
                 'retrain_count': self.retrain_count,
-                'current_accuracy': self.last_accuracy
+                'current_accuracy': self.last_accuracy,
+                'last_loss': getattr(self, 'last_loss', 0.0)
             }

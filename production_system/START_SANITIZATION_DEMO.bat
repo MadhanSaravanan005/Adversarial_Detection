@@ -3,7 +3,7 @@ REM Sanitization Feature Demo - Standalone
 REM Shows how to recover adversarial images using defense techniques
 REM Double-click to run
 
-cd /d "%~dp0\production_system"
+cd /d "%~dp0"
 echo ============================================================
 echo ADVERSARIAL IMAGE SANITIZATION DEMO
 echo ============================================================

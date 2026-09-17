@@ -1,10 +1,19 @@
 {
-  "baseline": null,
-  "robust": {
-    "path": "models\\robust_model.pth",
-    "status": "architecture_mismatch_using_fresh_model",
-    "loaded_at": "2026-03-30T23:27:18.367035"
+  "checkpoint_available": false,
+  "status": "No pre-trained weights file (.pth/.pt) is present in the repository.",
+  "active_mode": "Heuristic Ensemble (Color, Texture, Skew, Entropy, Saturation)",
+  "model_architecture": {
+    "name": "AdversarialDetectionCNN",
+    "module": "backend.background_trainer.AdversarialDetectionCNN",
+    "input_shape": [3, 32, 32],
+    "output_classes": 2,
+    "class_names": ["clean", "adversarial"]
   },
-  "current": null,
-  "versions": {}
+  "retraining": {
+    "supported": true,
+    "trigger_threshold": 5,
+    "optimizer": "Adam",
+    "loss": "CrossEntropyLoss"
+  },
+  "instructions_to_load_custom_checkpoint": "Place a trained PyTorch state_dict matching AdversarialDetectionCNN at models/robust_model.pth. The hybrid detector will automatically detect the checkpoint and activate Stage 2 CNN verification."
 }

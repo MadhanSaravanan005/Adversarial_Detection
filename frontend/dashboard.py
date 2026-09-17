@@ -48,15 +48,21 @@ with st.sidebar:
 
     model_choice = "robust" if "Robust" in model_type else "baseline"
 
+    st.markdown("---")
+    st.markdown("🛡️ **System Architecture**")
+    st.caption("**Pipeline**: Detect → Defend → Decide")
+    st.caption("**Active Mode**: Stage 1 Heuristic Ensemble (5 methods)")
+    st.caption("**CNN Checkpoint**: Unloaded (graceful heuristic fallback)")
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # SESSION STATE - STORE ACCURACY METRICS
 # ═══════════════════════════════════════════════════════════════════════════
 
 if 'baseline_accuracy' not in st.session_state:
-    st.session_state.baseline_accuracy = 50.0
+    st.session_state.baseline_accuracy = None
 if 'current_accuracy' not in st.session_state:
-    st.session_state.current_accuracy = 50.0
+    st.session_state.current_accuracy = None
 if 'buffer_size' not in st.session_state:
     st.session_state.buffer_size = 0
 if 'retrains_done' not in st.session_state:
@@ -66,8 +72,9 @@ if 'retrains_done' not in st.session_state:
 # MAIN TITLE
 # ═══════════════════════════════════════════════════════════════════════════
 
-st.markdown("# 🔍 AI-Generated Image Detector")
-st.markdown("**Detect fake, AI-generated, and synthetic images**")
+st.markdown("# 🛡️ Automated Adversarial Monitoring & Self-Defense System")
+st.markdown("**Detect, Defend, and Decide: Multi-stage Adversarial Detection, Defense Sanitization & Continuous Monitoring**")
+st.info("ℹ️ **Active Engine**: 5-Method Heuristic Ensemble (Color, Texture, Skew, Shannon Entropy, Saturation). *No pre-trained CNN weights are bundled; the pipeline gracefully executes Stage 1 heuristic defense.*")
 st.markdown("---")
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -132,8 +139,8 @@ with tab1:
 
                     # Update accuracy from API
                     accuracy_data = result.get('accuracy', {})
-                    st.session_state.baseline_accuracy = accuracy_data.get('baseline', 50.0)
-                    st.session_state.current_accuracy = accuracy_data.get('current', 50.0)
+                    st.session_state.baseline_accuracy = accuracy_data.get('baseline')
+                    st.session_state.current_accuracy = accuracy_data.get('current')
 
                     # Update buffer status
                     buffer_data = result.get('buffer_status', {})
@@ -159,12 +166,12 @@ with tab1:
                     m2.metric("Confidence", f"{confidence*100:.1f}%")
                     m3.markdown(f"<h3 style='color:{color}; text-align:center;'>{decision}</h3>", unsafe_allow_html=True)
 
-                    # Create heatmap showing where attacks might be
+                    # Create heatmap showing edge and gradient density
                     st.markdown("---")
-                    st.markdown("### 🔥 Vulnerability Heatmap")
-                    st.markdown("*Shows regions most susceptible to adversarial perturbations*")
+                    st.markdown("### 🔥 Edge & High-Frequency Variance Heatmap")
+                    st.markdown("*Visualizes spatial gradient density (Canny edge detection + Gaussian smoothing) highlighting structurally complex regions.*")
 
-                    # Generate heatmap (assumption: more edges = more vulnerable)
+                    # Generate heatmap
                     img_gray = cv2.cvtColor((image_np * 255).astype(np.uint8), cv2.COLOR_RGB2GRAY)
                     edges = cv2.Canny(img_gray, 100, 200)
                     heatmap = cv2.GaussianBlur(edges.astype(float), (21, 21), 0)
@@ -176,18 +183,18 @@ with tab1:
                         z=heatmap,
                         colorscale='Reds',
                         showscale=True,
-                        colorbar=dict(title="Vulnerability"),
-                        hovertemplate='<b>Adversarial Risk</b><br>Position: (%{x}, %{y})<br>Risk Level: %{z:.2%}<extra></extra>'
+                        colorbar=dict(title="Gradient Density"),
+                        hovertemplate='<b>Structural Density</b><br>Position: (%{x}, %{y})<br>Level: %{z:.2%}<extra></extra>'
                     ))
                     fig.update_layout(
                         height=350,
                         xaxis_title="Width",
                         yaxis_title="Height",
-                        title="Areas Most Vulnerable to Attack"
+                        title="Spatial Gradient & Texture Density"
                     )
                     st.plotly_chart(fig, use_container_width=True)
 
-                    st.info("🔴 Red areas = High adversarial risk | 🟡 Orange areas = Medium risk | 🟢 Green areas = Low risk")
+                    st.info("🔴 Red areas = Dense edges/textures | 🟡 Orange = Moderate texture | 🟢 Green/White = Smooth regions")
 
                     # Detector Breakdown (Simple)
                     st.markdown("---")
@@ -334,43 +341,41 @@ with tab2:
 with tab3:
     st.markdown("## 🔬 How Detection Works (5 Methods)")
 
-    st.markdown("""
-### **1️⃣ Robustness (25%)** - Is model confident?
-- Real image: Model 95% sure → NORMAL ✓
-- Fake image: Model 35% sure → SUSPICIOUS ✗
+    st.markdown(r"""
+### **1️⃣ Color Consistency (25% weight)** — Channel Balance Analysis
+- Calculates standard deviation across mean Red, Green, and Blue channels
+- Detects unnatural color casting or targeted single-channel perturbations common in adversarial samples
 
-### **2️⃣ Frequency (20%)** - Natural frequency mix?
-- Real: Bass strong, treble weak (natural)
-- Fake: All frequencies equal (unnatural)
+### **2️⃣ Texture Variance (20% weight)** — Spatial Noise Analysis
+- Converts image to grayscale and computes pixel standard deviation
+- Detects high-frequency additive noise, roughness, and high-frequency perturbation patterns
 
-### **3️⃣ Statistical (15%)** - Natural pixel colors?
-- Real: Bell curve distribution → NORMAL
-- Fake: Flat distribution → ABNORMAL
+### **3️⃣ Distribution Skew (25% weight)** — Histogram Symmetry
+- Computes the third standardized moment (skewness) of the pixel intensity distribution
+- Natural images maintain balanced, bell-like distributions; gradient-based attacks (FGSM/PGD) distort distribution symmetry
 
-### **4️⃣ Fingerprinting (20%)** - Neural patterns OK?
-- Real: Natural activations → NORMAL
-- Fake: Artificial patterns → SUSPICIOUS
+### **4️⃣ Entropy Pattern (20% weight)** — Shannon Information Density
+- Measures Shannon entropy across the 256-bin pixel intensity histogram
+- Adversarial perturbations increase random disorder, resulting in elevated information entropy
 
-### **5️⃣ Metadata (10%)** - Camera info present?
-- Real photo: Has camera, GPS, date → COMPLETE
-- AI image: Missing all → EMPTY
+### **5️⃣ Chromatic Saturation (10% weight)** — HSV Color Space
+- Analyzes color saturation ratios in HSV color space
+- Flags images with extreme or artificially flattened saturation levels
 
 ---
 
-## 📊 How They Vote Together
+## 📊 Ensemble Decision Policy
 
-**Example:**
+The 5 heuristic scores are combined with their assigned weights to generate an initial risk score (0% to 100%):
+
 ```
-All 5 methods vote on image
-→ Combine votes with weights
-→ Risk Score (0-100%)
-
-< 40% = ALLOW (Safe)
-40-70% = REVIEW (Suspicious)
-≥ 70% = BLOCK (Fake)
+Heuristic Risk = 0.25*(Color) + 0.20*(Texture) + 0.25*(Skew) + 0.20*(Entropy) + 0.10*(Saturation)
 ```
 
-**Key Point:** Hard to fool all 5 at once!
+**Decision Thresholds:**
+- **< 50% = ALLOW**: Low risk, natural statistical properties
+- **50% - 75% = REVIEW**: Uncertain anomaly detected, secondary CNN verification invoked if available
+- **≥ 75% = BLOCK**: High confidence of artificial manipulation or adversarial attack
     """)
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -390,21 +395,23 @@ with tab4:
             metrics_data = metrics_response.json()
 
             # Extract metrics with proper defaults
-            baseline_acc = metrics_data.get('accuracy', {}).get('baseline', 72.5)
-            current_acc = metrics_data.get('accuracy', {}).get('current', 72.5)
-            improvement = metrics_data.get('accuracy', {}).get('improvement', 0)
+            baseline_acc = metrics_data.get('accuracy', {}).get('baseline')
+            current_acc = metrics_data.get('accuracy', {}).get('current')
+            improvement = metrics_data.get('accuracy', {}).get('improvement', 0.0)
             retrains_done = metrics_data.get('retraining', {}).get('count', 0)
             bg_retrains = metrics_data.get('retraining', {}).get('background_retrains', 0)
             is_retraining = metrics_data.get('retraining', {}).get('is_retraining', False)
-            bg_accuracy = metrics_data.get('retraining', {}).get('bg_accuracy', baseline_acc)
+            bg_accuracy = metrics_data.get('retraining', {}).get('bg_accuracy')
+            last_loss = metrics_data.get('retraining', {}).get('last_loss')
         else:
-            baseline_acc = 72.5
-            current_acc = 72.5
-            improvement = 0
+            baseline_acc = None
+            current_acc = None
+            improvement = 0.0
             retrains_done = 0
             bg_retrains = 0
             is_retraining = False
-            bg_accuracy = 72.5
+            bg_accuracy = None
+            last_loss = None
 
         if buffer_response.status_code == 200:
             buffer_data = buffer_response.json()
@@ -425,22 +432,28 @@ with tab4:
         buffer_size = 0
         buffer_max = 5
         fill_pct = 0
-        baseline_acc = 72.5
-        current_acc = 72.5
-        improvement = 0
+        baseline_acc = None
+        current_acc = None
+        improvement = 0.0
         retrains_done = 0
         bg_buffer_size = 0
         is_bg_retraining = False
         bg_retrains = 0
         is_retraining = False
+        last_loss = None
+
+    # Format accuracy strings
+    start_acc_str = f"{baseline_acc:.1f}%" if baseline_acc is not None else "N/A"
+    curr_acc_str = f"{current_acc:.1f}%" if current_acc is not None else "N/A"
+    delta_str = f"+{improvement:.2f}%" if (improvement and improvement > 0) else None
 
     # Display key metrics
     col1, col2, col3, col4 = st.columns(4)
 
     col1.metric("📦 Detection Buffer", f"{buffer_size}/{buffer_max}", delta=f"{fill_pct:.0f}% filled")
-    col2.metric("🎯 Start Accuracy", f"{baseline_acc:.1f}%")
-    col3.metric("📈 Current Accuracy", f"{current_acc:.1f}%", delta=f"+{improvement:.2f}%")
-    col4.metric("🔬 Retraining Status", "ENABLED", delta="Background Active")
+    col2.metric("🎯 Benchmark Accuracy", start_acc_str, help="Benchmark accuracy of pre-trained model (N/A if checkpoint not loaded)")
+    col3.metric("📈 Fine-Tuned Accuracy", curr_acc_str, delta=delta_str)
+    col4.metric("🔬 Background Retraining", "READY", delta="Thread Active")
 
     st.markdown("---")
 
@@ -474,40 +487,41 @@ with tab4:
         st.progress(min(bg_buffer_size / 5, 1.0))
 
         if is_bg_retraining:
-            st.warning("⚠️ Real model retraining in progress on GPU... (Background)")
+            st.warning("⚠️ Real model retraining in progress on GPU/CPU... (Background)")
         elif bg_buffer_size >= 5:
-            st.success("✅ Real retraining buffer full! Starting GPU training...")
+            st.success("✅ Real retraining buffer full! Starting training step...")
 
     st.markdown("---")
 
     st.markdown(f"""
 ### 📊 Real-Time Learning Status
 
-**Current Model:** Latest (auto-updated after retraining)
+**Current Model:** `AdversarialDetectionCNN` (PyTorch)
+**Operating Mode:** Stage 1 Heuristic Ensemble *(Pre-trained checkpoint not loaded; Stage 1 active)*
 
 **Detection Buffer System (Real):**
 - Current: {buffer_size}/{buffer_max} suspicious images ({fill_pct:.0f}% full)
 - Trigger: When {buffer_max} images collected → Background retraining starts
-- Method: Real GPU/CPU fine-tuning (PyTorch adversarial training)
-- Result: Model weights updated automatically
+- Method: PyTorch fine-tuning on buffered adversarial examples
+- Result: Model weights updated in background thread
 
 **Background Retraining:** ✅ ACTIVE & RUNNING
-- Type: Real model fine-tuning (not simulated)
+- Type: Genuine model fine-tuning (not simulated)
 - Execution: Separate background thread (non-blocking)
 - Data: Actual detected adversarial examples from buffer
-- Process: Adam optimizer with CrossEntropyLoss
+- Optimizer: Adam with CrossEntropyLoss
 - Device: GPU if available, CPU fallback
 
 **Performance Metrics:**
-- **Baseline Accuracy:** {baseline_acc:.1f}%
-- **Current Accuracy:** {current_acc:.1f}%
-- **Improvement:** +{improvement:.2f}%
+- **Benchmark Accuracy:** {start_acc_str} *(Pre-trained checkpoint not bundled)*
+- **Fine-Tuned Accuracy:** {curr_acc_str}
+- **Last Optimizer Loss:** {f"{last_loss:.4f}" if last_loss is not None else "N/A"}
 
 **Active Features:**
-- ✅ 5-method ensemble detection (robustness, frequency, statistical, fingerprint, metadata)
-- ✅ Real GPU/CPU model fine-tuning on detected adversarial examples
+- ✅ 5-method ensemble detection (color consistency, texture variance, distribution skew, entropy, saturation)
+- ✅ PyTorch fine-tuning on detected adversarial examples
 - ✅ Background thread for continuous learning (non-blocking API)
-- ✅ Model versioning and persistence
+- ✅ Defense sanitization pipeline (JPEG compression, Gaussian blur, median filter, spatial resizing, bit-depth reduction)
 - ✅ Graceful error handling with fallback cascades
 - ✅ Real-time metrics tracking and monitoring
     """)

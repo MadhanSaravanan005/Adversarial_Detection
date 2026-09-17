@@ -11,8 +11,21 @@ This module combines:
 import numpy as np
 import torch
 import logging
-from backend.hybrid_detector import HybridDetector
-from production_system.SANITIZATION_APPROACH import AdversarialImageSanitizer
+import sys
+from pathlib import Path
+
+# Ensure root directory is on sys.path
+root_dir = Path(__file__).resolve().parent.parent
+if str(root_dir) not in sys.path:
+    sys.path.insert(0, str(root_dir))
+
+try:
+    from production_system.SANITIZATION_APPROACH import AdversarialImageSanitizer
+except ImportError:
+    try:
+        from SANITIZATION_APPROACH import AdversarialImageSanitizer
+    except ImportError:
+        from ..production_system.SANITIZATION_APPROACH import AdversarialImageSanitizer
 
 logger = logging.getLogger(__name__)
 
